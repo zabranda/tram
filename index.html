@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Next Tram 8 - Ocelářská -> Náměstí republiky</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #121521;
+      color: #f2f5ff;
+    }
+
+    .card {
+      width: min(760px, 92vw);
+      background: #1b2030;
+      border: 1px solid #2a3147;
+      border-radius: 14px;
+      padding: 1.2rem;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+    }
+
+    h1 {
+      margin: 0 0 0.4rem;
+      font-size: 1.3rem;
+    }
+
+    .muted {
+      color: #b6bfd8;
+      margin: 0.25rem 0 0.8rem;
+    }
+
+    .token-row {
+      display: grid;
+      gap: 0.6rem;
+      grid-template-columns: 1fr auto;
+      margin: 0.9rem 0 1rem;
+    }
+
+    input, button {
+      border-radius: 8px;
+      border: 1px solid #3a4462;
+      background: #0f1320;
+      color: #f2f5ff;
+      padding: 0.6rem 0.7rem;
+      font-size: 0.95rem;
+    }
+
+    button {
+      cursor: pointer;
+      background: #2f69ff;
+      border-color: #2f69ff;
+      font-weight: 600;
+    }
+
+    .value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0.3rem 0;
+    }
+
+    .box {
+      border: 1px solid #2f3750;
+      border-radius: 10px;
+      padding: 0.8rem;
+      margin-top: 0.8rem;
+      background: #151a28;
+    }
+
+    .status {
+      margin-top: 0.8rem;
+      color: #cbd3ea;
+    }
+
+    a {
+      color: #8bb2ff;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Tram 8: Ocelářská -> Náměstí Republiky</h1>
+    <p class="muted">Live predicted departures and travel times.</p>
+
+    <section class="box">
+      <div class="muted">Next departure (real-time)</div>
+      <div id="arrivalTime" class="value">Waiting for data...</div>
+      <div id="inMinutes" class="muted"></div>
+      <div id="destination" class="muted"></div>
+    </section>
+
+    <section class="box">
+      <div class="muted">Příjezd do zastávky Florenc</div>
+      <div id="florencTime" class="value" style="font-size:1.05rem;">Waiting for data...</div>
+      <div id="florencMinutes" class="muted"></div>
+    </section>
+
+    <section class="box">
+      <div class="muted">Příjezd do zastávky Náměstí Republiky</div>
+      <div id="republikyTime" class="value" style="font-size:1.05rem;">Waiting for data...</div>
+      <div id="republikyMinutes" class="muted"></div>
+    </section>
+
+    <p id="status" class="status"></p>
+  </main>
+
+  <script>
+    const CONFIG = {
+      stopName: "Ocelářská",
+      lineShortName: "8",
+      destinationText: "Nádraží Podbaba",
+      refreshMs: 20000,
+      timezone: "Europe/Prague"
+    };
+
+    const ui = {
+      arrivalTime: document.getElementById("arrivalTime"),
+      inMinutes: document.getElementById("inMinutes"),
+      destination: document.getElementById("destination"),
+      florencTime: document.getElementById("florencTime"),
+      florencMinutes: document.getElementById("florencMinutes"),
+      republikyTime: document.getElementById("republikyTime"),
+      republikyMinutes: document.getElementById("republikyMinutes"),
+      status: document.getElementById("status")
+    };
+
+    let token = localStorage.getItem("golemio_token") || "";
+    let timerId = null;
+
+    function normalizeText(value) {
+      return (value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    }
+
+    function setStatus(message) {
+      ui.status.textContent = message;
+    }
+
+    function formatPragueTime(isoDate) {
+      const date = new Date(isoDate);
+      return new Intl.DateTimeFormat("cs-CZ", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZone: CONFIG.timezone
+      }).format(date);
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url, {
+        headers: {
+          "X-Access-Token": token,
+          "Content-Type": "application/json"
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} from ${url}`);
+      }
+      return response.json();
+    }
+
+    function getMatchingDeparture(board) {
+      const departures = board?.departures || [];
+      const wantedDestination = normalizeText(CONFIG.destinationText);
+      const line8Departures = departures.filter((item) => String(item?.route?.short_name || "") === CONFIG.lineShortName);
+
+      console.log("[PID DEBUG] Desired normalized destination:", wantedDestination);
+      console.log("[PID DEBUG] Total departures returned:", departures.length);
+      console.log("[PID DEBUG] Tram 8 departures (headsign + predicted):", line8Departures.map((item) => ({
+        headsign: item?.trip?.headsign || "",
+        normalizedHeadsign: normalizeText(item?.trip?.headsign || ""),
+        predicted: item?.departure_timestamp?.predicted || item?.departure_timestamp?.scheduled || null,
+        minutes: item?.departure_timestamp?.minutes || null
+      })));
+
+      return departures.find((item) => {
+        const line = String(item?.route?.short_name || "");
+        const headsign = normalizeText(item?.trip?.headsign || "");
+        return line === CONFIG.lineShortName && headsign.includes(wantedDestination);
+      }) || null;
+    }
+
+    function getMinutesFromNow(isoDate) {
+      if (!isoDate) {
+        return null;
+      }
+      const targetMs = new Date(isoDate).getTime();
+      if (Number.isNaN(targetMs)) {
+        return null;
+      }
+      return Math.round((targetMs - Date.now()) / 60000);
+    }
+
+    async function fetchNextDeparture() {
+      const params = new URLSearchParams();
+      params.append("names[]", CONFIG.stopName);
+      params.append("minutesBefore", "1");
+      params.append("minutesAfter", "90");
+      params.append("order", "real");
+      params.append("limit", "80");
+      params.append("mode", "departures");
+
+      const board = await fetchJson(`https://api.golemio.cz/v2/pid/departureboards?${params.toString()}`);
+      console.log("[PID DEBUG] Raw departureboard response:", board);
+      const departure = getMatchingDeparture(board);
+      if (!departure) {
+        console.warn("[PID DEBUG] No matching departure found for configured line and destination.");
+        return null;
+      }
+
+      return {
+        tripId: departure?.trip?.id || null,
+        headsign: departure?.trip?.headsign || "",
+        predicted: departure?.departure_timestamp?.predicted || departure?.departure_timestamp?.scheduled || null,
+        minutes: departure?.departure_timestamp?.minutes || null,
+        delaySeconds: departure?.delay?.seconds || null
+      };
+    }
+
+    function getTripStopPrediction(board, tripId) {
+      const departures = board?.departures || [];
+      if (!tripId) {
+        return null;
+      }
+
+      const item = departures.find((departure) => {
+        const line = String(departure?.route?.short_name || "");
+        const depTripId = departure?.trip?.id || "";
+        return line === CONFIG.lineShortName && depTripId === tripId;
+      }) || null;
+
+      if (!item) {
+        return null;
+      }
+
+      const predicted = item?.departure_timestamp?.predicted ||
+        item?.arrival_timestamp?.predicted ||
+        item?.departure_timestamp?.scheduled ||
+        item?.arrival_timestamp?.scheduled ||
+        null;
+
+      return {
+        predicted,
+        minutes: getMinutesFromNow(predicted)
+      };
+    }
+
+    async function fetchArrivalForTrip(stopName, tripId) {
+      if (!tripId) {
+        return null;
+      }
+
+      const params = new URLSearchParams();
+      params.append("names[]", stopName);
+      params.append("minutesBefore", "0");
+      params.append("minutesAfter", "120");
+      params.append("order", "real");
+      params.append("limit", "120");
+      params.append("mode", "mixed");
+
+      const board = await fetchJson(`https://api.golemio.cz/v2/pid/departureboards?${params.toString()}`);
+      const result = getTripStopPrediction(board, tripId);
+      console.log(`[PID DEBUG] ETA lookup for ${stopName}:`, { tripId, result, board });
+      return result;
+    }
+
+    function renderDeparture(next) {
+      if (!next || !next.predicted) {
+        ui.arrivalTime.textContent = "No upcoming matching tram found";
+        ui.inMinutes.textContent = "Try again in a moment.";
+        ui.destination.textContent = "";
+        return;
+      }
+
+      ui.arrivalTime.textContent = formatPragueTime(next.predicted);
+      ui.inMinutes.textContent = `Za ${next.minutes ?? "?"} minut`;
+      ui.destination.textContent = `Direction: ${next.headsign || "unknown"}`;
+    }
+
+    function renderEtaBox(timeElement, minutesElement, label, etaData) {
+      if (!etaData || !etaData.predicted) {
+        timeElement.textContent = "Not available for selected trip";
+        minutesElement.textContent = `${label}: no matching real-time record found yet.`;
+        return;
+      }
+
+      timeElement.textContent = formatPragueTime(etaData.predicted);
+      const minText = etaData.minutes === null ? "?" : etaData.minutes;
+      minutesElement.textContent = `Za ${minText} minut`;
+    }
+
+    async function refresh() {
+      if (!token) {
+        setStatus("Add your API token to start live updates.");
+        return;
+      }
+
+      setStatus("Loading live data...");
+      try {
+        const next = await fetchNextDeparture();
+        renderDeparture(next);
+        const [florencEta, republikyEta] = await Promise.all([
+          fetchArrivalForTrip("Florenc", next?.tripId),
+          fetchArrivalForTrip("Náměstí Republiky", next?.tripId)
+        ]);
+        renderEtaBox(ui.florencTime, ui.florencMinutes, "Florenc", florencEta);
+        renderEtaBox(ui.republikyTime, ui.republikyMinutes, "Náměstí Republiky", republikyEta);
+        setStatus(`Updated: ${new Date().toLocaleTimeString("cs-CZ")}`);
+      } catch (error) {
+        setStatus(`Error: ${error.message}`);
+      }
+    }
+
+    function startPolling() {
+      if (timerId) {
+        clearInterval(timerId);
+      }
+      refresh();
+      timerId = setInterval(refresh, CONFIG.refreshMs);
+    }
+
+    startPolling();
+  </script>
+</body>
+</html>
