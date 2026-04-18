@@ -20,12 +20,34 @@
     }
 
     .card {
-      width: min(760px, 92vw);
+      width: min(1100px, 96vw);
       background: #1b2030;
       border: 1px solid #2a3147;
       border-radius: 14px;
       padding: 1.2rem;
       box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+    }
+
+    .columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem 1.25rem;
+      align-items: start;
+    }
+
+    @media (max-width: 780px) {
+      .columns {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .col-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #8b9ac4;
+      margin: 0 0 0.35rem;
     }
 
     h1 {
@@ -64,8 +86,12 @@
       border: 1px solid #2f3750;
       border-radius: 10px;
       padding: 0.8rem;
-      margin-top: 0.8rem;
+      margin-top: 0.75rem;
       background: #151a28;
+    }
+
+    .col .box:first-of-type {
+      margin-top: 0.5rem;
     }
 
     .status {
@@ -83,24 +109,51 @@
     <h1>Tram 8: Ocelářská -> Náměstí Republiky</h1>
     <p class="muted">Live predicted departures and travel times.</p>
 
-    <section class="box">
-      <div class="muted">Next departure (real-time)</div>
-      <div id="arrivalTime" class="value">Waiting for data...</div>
-      <div id="inMinutes" class="muted"></div>
-      <div id="destination" class="muted"></div>
-    </section>
+    <div class="columns">
+      <div class="col col--left">
+        <p class="col-title">Nejbližší spoj</p>
+        <section class="box">
+          <div class="muted">Next departure (real-time)</div>
+          <div id="arrivalTime" class="value">Waiting for data...</div>
+          <div id="inMinutes" class="muted"></div>
+          <div id="destination" class="muted"></div>
+        </section>
 
-    <section class="box">
-      <div class="muted">Příjezd do zastávky Florenc</div>
-      <div id="florencTime" class="value" style="font-size:1.05rem;">Waiting for data...</div>
-      <div id="florencMinutes" class="muted"></div>
-    </section>
+        <section class="box">
+          <div class="muted">Příjezd do zastávky Florenc</div>
+          <div id="florencTime" class="value" style="font-size:1.05rem;">Waiting for data...</div>
+          <div id="florencMinutes" class="muted"></div>
+        </section>
 
-    <section class="box">
-      <div class="muted">Příjezd do zastávky Náměstí Republiky</div>
-      <div id="republikyTime" class="value" style="font-size:1.05rem;">Waiting for data...</div>
-      <div id="republikyMinutes" class="muted"></div>
-    </section>
+        <section class="box">
+          <div class="muted">Příjezd do zastávky Náměstí Republiky</div>
+          <div id="republikyTime" class="value" style="font-size:1.05rem;">Waiting for data...</div>
+          <div id="republikyMinutes" class="muted"></div>
+        </section>
+      </div>
+
+      <div class="col col--right">
+        <p class="col-title">Druhý nejbližší spoj</p>
+        <section class="box">
+          <div class="muted">Odjezd z Ocelářská</div>
+          <div id="arrivalTime2" class="value">—</div>
+          <div id="inMinutes2" class="muted"></div>
+          <div id="destination2" class="muted"></div>
+        </section>
+
+        <section class="box">
+          <div class="muted">Příjezd do zastávky Florenc</div>
+          <div id="florencTime2" class="value" style="font-size:1.05rem;">—</div>
+          <div id="florencMinutes2" class="muted"></div>
+        </section>
+
+        <section class="box">
+          <div class="muted">Příjezd do zastávky Náměstí Republiky</div>
+          <div id="republikyTime2" class="value" style="font-size:1.05rem;">—</div>
+          <div id="republikyMinutes2" class="muted"></div>
+        </section>
+      </div>
+    </div>
 
     <p id="status" class="status"></p>
   </main>
@@ -123,6 +176,13 @@
       florencMinutes: document.getElementById("florencMinutes"),
       republikyTime: document.getElementById("republikyTime"),
       republikyMinutes: document.getElementById("republikyMinutes"),
+      arrivalTime2: document.getElementById("arrivalTime2"),
+      inMinutes2: document.getElementById("inMinutes2"),
+      destination2: document.getElementById("destination2"),
+      florencTime2: document.getElementById("florencTime2"),
+      florencMinutes2: document.getElementById("florencMinutes2"),
+      republikyTime2: document.getElementById("republikyTime2"),
+      republikyMinutes2: document.getElementById("republikyMinutes2"),
       status: document.getElementById("status")
     };
 
@@ -166,7 +226,7 @@
       return response.json();
     }
 
-    function getMatchingDeparture(board) {
+    function getMatchingDepartures(board) {
       const departures = board?.departures || [];
       const wantedDestination = normalizeText(CONFIG.destinationText);
       const line8Departures = departures.filter((item) => String(item?.route?.short_name || "") === CONFIG.lineShortName);
@@ -180,11 +240,25 @@
         minutes: item?.departure_timestamp?.minutes || null
       })));
 
-      return departures.find((item) => {
+      return departures.filter((item) => {
         const line = String(item?.route?.short_name || "");
         const headsign = normalizeText(item?.trip?.headsign || "");
         return line === CONFIG.lineShortName && headsign.includes(wantedDestination);
-      }) || null;
+      });
+    }
+
+    function departureToSummary(departure) {
+      if (!departure) {
+        return null;
+      }
+      const predicted = departure?.departure_timestamp?.predicted || departure?.departure_timestamp?.scheduled || null;
+      return {
+        tripId: departure?.trip?.id || null,
+        headsign: departure?.trip?.headsign || "",
+        predicted,
+        minutes: departure?.departure_timestamp?.minutes ?? (predicted ? getMinutesFromNow(predicted) : null),
+        delaySeconds: departure?.delay?.seconds || null
+      };
     }
 
     function getMinutesFromNow(isoDate) {
@@ -198,7 +272,7 @@
       return Math.round((targetMs - Date.now()) / 60000);
     }
 
-    async function fetchNextDeparture() {
+    async function fetchTramDeparturesFromOcelarska() {
       const params = new URLSearchParams();
       params.append("names[]", CONFIG.stopName);
       params.append("minutesBefore", "1");
@@ -209,18 +283,14 @@
 
       const board = await fetchFromProxy("/v2/pid/departureboards", params);
       console.log("[PID DEBUG] Raw departureboard response:", board);
-      const departure = getMatchingDeparture(board);
-      if (!departure) {
+      const matches = getMatchingDepartures(board);
+      if (!matches.length) {
         console.warn("[PID DEBUG] No matching departure found for configured line and destination.");
-        return null;
       }
 
       return {
-        tripId: departure?.trip?.id || null,
-        headsign: departure?.trip?.headsign || "",
-        predicted: departure?.departure_timestamp?.predicted || departure?.departure_timestamp?.scheduled || null,
-        minutes: departure?.departure_timestamp?.minutes || null,
-        delaySeconds: departure?.delay?.seconds || null
+        first: departureToSummary(matches[0] || null),
+        second: departureToSummary(matches[1] || null)
       };
     }
 
@@ -284,6 +354,19 @@
       ui.destination.textContent = `Direction: ${next.headsign || "unknown"}`;
     }
 
+    function renderSecondDeparture(next) {
+      if (!next || !next.predicted) {
+        ui.arrivalTime2.textContent = "—";
+        ui.inMinutes2.textContent = "Žádný druhý spoj v okně";
+        ui.destination2.textContent = "";
+        return;
+      }
+
+      ui.arrivalTime2.textContent = formatPragueTime(next.predicted);
+      ui.inMinutes2.textContent = `Za ${next.minutes ?? "?"} minut`;
+      ui.destination2.textContent = `Direction: ${next.headsign || "unknown"}`;
+    }
+
     function renderEtaBox(timeElement, minutesElement, label, etaData) {
       if (!etaData || !etaData.predicted) {
         timeElement.textContent = "Not available for selected trip";
@@ -299,14 +382,20 @@
     async function refresh() {
       setStatus("Loading live data...");
       try {
-        const next = await fetchNextDeparture();
-        renderDeparture(next);
-        const [florencEta, republikyEta] = await Promise.all([
-          fetchArrivalForTrip("Florenc", next?.tripId),
-          fetchArrivalForTrip("Náměstí Republiky", next?.tripId)
+        const { first, second } = await fetchTramDeparturesFromOcelarska();
+        renderDeparture(first);
+        renderSecondDeparture(second);
+
+        const [florencEta, republikyEta, florencEta2, republikyEta2] = await Promise.all([
+          fetchArrivalForTrip("Florenc", first?.tripId),
+          fetchArrivalForTrip("Náměstí Republiky", first?.tripId),
+          fetchArrivalForTrip("Florenc", second?.tripId),
+          fetchArrivalForTrip("Náměstí Republiky", second?.tripId)
         ]);
         renderEtaBox(ui.florencTime, ui.florencMinutes, "Florenc", florencEta);
         renderEtaBox(ui.republikyTime, ui.republikyMinutes, "Náměstí Republiky", republikyEta);
+        renderEtaBox(ui.florencTime2, ui.florencMinutes2, "Florenc", florencEta2);
+        renderEtaBox(ui.republikyTime2, ui.republikyMinutes2, "Náměstí Republiky", republikyEta2);
         setStatus(`Updated: ${new Date().toLocaleTimeString("cs-CZ")}`);
       } catch (error) {
         setStatus(`Error: ${error.message}`);
