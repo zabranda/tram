@@ -20,8 +20,11 @@
     }
 
     .card {
-      width: min(1100px, 96vw);
+      display: inline-block;
+      width: fit-content;
+      max-width: min(1100px, 96vw);
       box-sizing: border-box;
+      vertical-align: top;
       background: #1b2030;
       border: 1px solid #2a3147;
       border-radius: 14px;
@@ -30,11 +33,13 @@
     }
 
     .columns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: flex-start;
       gap: 1rem 1.25rem;
-      align-items: start;
-      width: 100%;
+      width: fit-content;
+      max-width: 100%;
     }
 
     .col {
@@ -42,13 +47,22 @@
       flex-direction: column;
       align-items: stretch;
       gap: 0.75rem;
-      min-width: 0;
-      width: 100%;
+      flex: 1 1 0;
+      min-width: max-content;
+      max-width: 100%;
+      box-sizing: border-box;
     }
 
     @media (max-width: 780px) {
       .columns {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+        width: 100%;
+      }
+
+      .col {
+        flex: 0 0 auto;
+        min-width: 0;
+        width: 100%;
       }
     }
 
