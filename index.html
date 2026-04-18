@@ -20,7 +20,8 @@
     }
 
     .card {
-      width: min(1100px, 96vw);
+      width: fit-content;
+      max-width: min(1100px, 96vw);
       background: #1b2030;
       border: 1px solid #2a3147;
       border-radius: 14px;
@@ -30,14 +31,29 @@
 
     .columns {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem 1.25rem;
+      grid-template-columns: max-content max-content;
+      gap: 1rem 1.5rem;
       align-items: start;
+      justify-content: center;
+    }
+
+    .col {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+      min-width: 0;
+      max-width: 100%;
     }
 
     @media (max-width: 780px) {
       .columns {
         grid-template-columns: 1fr;
+        justify-items: center;
+      }
+
+      .col {
+        align-items: center;
       }
     }
 
@@ -47,7 +63,9 @@
       letter-spacing: 0.04em;
       text-transform: uppercase;
       color: #8b9ac4;
-      margin: 0 0 0.35rem;
+      margin: 0;
+      width: max-content;
+      max-width: 100%;
     }
 
     h1 {
@@ -86,12 +104,10 @@
       border: 1px solid #2f3750;
       border-radius: 10px;
       padding: 0.8rem;
-      margin-top: 0.75rem;
       background: #151a28;
-    }
-
-    .col .box:first-of-type {
-      margin-top: 0.5rem;
+      width: max-content;
+      max-width: min(100vw - 3rem, 420px);
+      box-sizing: border-box;
     }
 
     .status {
