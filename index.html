@@ -38,13 +38,6 @@
       margin: 0.25rem 0 0.8rem;
     }
 
-    .token-row {
-      display: grid;
-      gap: 0.6rem;
-      grid-template-columns: 1fr auto;
-      margin: 0.9rem 0 1rem;
-    }
-
     input, button {
       border-radius: 8px;
       border: 1px solid #3a4462;
@@ -118,7 +111,8 @@
       lineShortName: "8",
       destinationText: "Nádraží Podbaba",
       refreshMs: 20000,
-      timezone: "Europe/Prague"
+      timezone: "Europe/Prague",
+      proxyEndpoint: "/api/golemio"
     };
 
     const ui = {
@@ -132,7 +126,6 @@
       status: document.getElementById("status")
     };
 
-    let token = localStorage.getItem("golemio_token") || "";
     let timerId = null;
 
     function normalizeText(value) {
@@ -157,15 +150,18 @@
       }).format(date);
     }
 
-    async function fetchJson(url) {
-      const response = await fetch(url, {
-        headers: {
-          "X-Access-Token": token,
-          "Content-Type": "application/json"
+    async function fetchFromProxy(path, params) {
+      const proxyParams = new URLSearchParams();
+      proxyParams.append("path", path);
+      if (params) {
+        const src = new URLSearchParams(params);
+        for (const [key, value] of src.entries()) {
+          proxyParams.append(key, value);
         }
-      });
+      }
+      const response = await fetch(`${CONFIG.proxyEndpoint}?${proxyParams.toString()}`);
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status} from ${url}`);
+        throw new Error(`HTTP ${response.status} from proxy request`);
       }
       return response.json();
     }
@@ -211,7 +207,7 @@
       params.append("limit", "80");
       params.append("mode", "departures");
 
-      const board = await fetchJson(`https://api.golemio.cz/v2/pid/departureboards?${params.toString()}`);
+      const board = await fetchFromProxy("/v2/pid/departureboards", params);
       console.log("[PID DEBUG] Raw departureboard response:", board);
       const departure = getMatchingDeparture(board);
       if (!departure) {
@@ -269,7 +265,7 @@
       params.append("limit", "120");
       params.append("mode", "mixed");
 
-      const board = await fetchJson(`https://api.golemio.cz/v2/pid/departureboards?${params.toString()}`);
+      const board = await fetchFromProxy("/v2/pid/departureboards", params);
       const result = getTripStopPrediction(board, tripId);
       console.log(`[PID DEBUG] ETA lookup for ${stopName}:`, { tripId, result, board });
       return result;
@@ -301,11 +297,6 @@
     }
 
     async function refresh() {
-      if (!token) {
-        setStatus("Add your API token to start live updates.");
-        return;
-      }
-
       setStatus("Loading live data...");
       try {
         const next = await fetchNextDeparture();
